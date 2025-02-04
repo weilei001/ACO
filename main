@@ -1,0 +1,289 @@
+function main() 
+% Main function for Ant Colony Optimization (ACO) path planning
+
+% Define the grid map (0: free cell, 1: obstacle)
+G = [0 0 0 0 0 0 1 1 1 0 0 0 0 0 0 0 0 0 0 0; 
+     0 1 1 0 0 0 1 1 1 0 0 0 0 0 0 0 0 0 0 0; 
+     0 1 1 0 0 0 1 1 1 0 0 0 0 0 0 0 0 0 0 0; 
+     0 0 0 0 0 0 1 1 1 0 0 0 0 0 0 0 0 0 0 0; 
+     0 0 0 0 0 0 1 1 1 0 0 0 0 0 0 0 0 0 0 0; 
+     0 1 1 1 0 0 1 1 1 0 0 0 0 0 0 0 0 0 0 0; 
+     0 1 1 1 0 0 1 1 1 0 0 0 0 0 0 0 0 0 0 0;
+     0 1 1 1 0 0 1 1 1 0 1 1 1 1 0 0 0 0 0 0; 
+     0 1 1 1 0 0 0 0 0 0 1 1 1 1 0 0 0 0 0 0; 
+     0 0 0 0 0 0 0 0 0 0 1 1 1 1 0 0 0 0 0 0; 
+     0 0 0 0 0 0 0 1 1 1 1 1 1 1 0 0 0 0 0 0; 
+     0 0 0 0 0 0 0 1 1 1 1 1 1 1 0 0 0 0 0 0; 
+     0 0 0 0 0 0 0 0 0 0 0 1 1 1 0 1 1 1 1 0; 
+     0 0 0 0 0 0 0 0 0 0 0 1 1 1 0 1 1 1 1 0; 
+     1 1 1 1 0 0 0 0 0 0 0 1 1 1 0 1 1 1 1 0; 
+     1 1 1 1 0 0 1 1 1 1 1 1 0 0 0 0 0 0 0 0; 
+     0 0 0 0 0 0 1 1 1 1 1 1 0 0 0 0 0 1 1 0; 
+     0 0 0 0 0 0 0 0 0 0 1 1 0 0 0 0 0 1 1 0; 
+     0 0 0 0 0 0 0 0 0 0 1 1 0 0 1 0 0 0 0 0; 
+     0 0 0 0 0 0 0 0 0 0 1 1 0 0 0 0 0 0 0 0;];
+MM = size(G,1);           % Grid size (number of rows/columns)
+
+% Initialize pheromone matrix
+Tau = ones(MM*MM, MM*MM) * 8;
+
+% Set algorithm parameters
+K = 100;      % Number of iterations (waves of ants)
+M = 50;       % Number of ants per iteration
+S = 1;        % Start node index
+E = MM*MM;    % End node index
+Alpha = 1;    % Importance of pheromone
+Beta = 7;     % Importance of heuristic (distance)
+Rho = 0.3;    % Pheromone evaporation rate
+Q = 1;        % Pheromone deposit factor
+
+minkl = inf; 
+mink = 0; 
+minl = 0; 
+
+% Convert grid to distance matrix
+D = G2D(G); 
+N = size(D,1); % Total number of nodes
+
+a = 1;  % Grid cell side length
+
+% Calculate target coordinates (for heuristic)
+Ex = a*(mod(E,MM) - 0.5);
+if Ex == -0.5 
+    Ex = MM - 0.5; 
+end 
+Ey = a*(MM + 0.5 - ceil(E/MM));
+
+% Initialize heuristic information (reciprocal of Euclidean distance)
+Eta = zeros(N,1);
+for i = 1:N 
+    ix = a*(mod(i,MM) - 0.5);
+    if ix == -0.5 
+       ix = MM - 0.5; 
+    end 
+    iy = a*(MM + 0.5 - ceil(i/MM));  
+    if i ~= E 
+       Eta(i) = 1 / sqrt((ix-Ex)^2 + (iy-Ey)^2); 
+    else 
+       Eta(i) = 100; 
+    end 
+end 
+
+% Initialize storage for routes and path lengths
+ROUTES = cell(K, M); 
+PL = zeros(K, M);
+
+% Main loop: iterate K times (waves)
+for k = 1:K 
+    for m = 1:M 
+        % Initialize state for each ant
+        W = S;             % Current node
+        Path = S;          % Current path
+        PLkm = 0;          % Path length accumulator
+        TABUkm = ones(N,1); % Tabu list (visited nodes)
+        TABUkm(S) = 0;     % Mark start as visited
+        DD = D;            % Working copy of the distance matrix
+
+        % Determine candidate next nodes from the current node
+        DW = DD(W,:); 
+        DW1 = find(DW); 
+        for j = 1:length(DW1) 
+            if TABUkm(DW1(j)) == 0 
+                DW(DW1(j)) = 0; 
+            end 
+        end 
+        LJD = find(DW);  % Candidate nodes
+        Len_LJD = length(LJD);
+
+        % Move until target is reached or no candidates remain
+        while W ~= E && Len_LJD >= 1 
+            % Roulette wheel selection based on pheromone and heuristic
+            PP = zeros(Len_LJD, 1); 
+            for i = 1:Len_LJD 
+                PP(i) = (Tau(W, LJD(i))^Alpha) * (Eta(LJD(i))^Beta); 
+            end 
+            PP = PP / sum(PP);  % Normalize probabilities
+            Pcum = cumsum(PP);  % Cumulative probability
+            Select = find(Pcum >= rand, 1); 
+            to_visit = LJD(Select);
+            
+            % Update state and record the path
+            Path = [Path, to_visit];        
+            PLkm = PLkm + DD(W, to_visit);    
+            W = to_visit;                    
+            for kk = 1:N 
+                if TABUkm(kk) == 0 
+                    DD(W,kk) = 0; 
+                    DD(kk,W) = 0; 
+                end 
+            end 
+            TABUkm(W) = 0;    % Mark the node as visited
+            DW = DD(W,:); 
+            DW1 = find(DW); 
+            for j = 1:length(DW1) 
+                if TABUkm(DW1(j)) == 0 
+                    DW(j) = 0; 
+                end 
+            end 
+            LJD = find(DW); 
+            Len_LJD = length(LJD);
+        end 
+        
+        % Record the ant's route and path length
+        ROUTES{k, m} = Path; 
+        if Path(end) == E 
+            PL(k, m) = PLkm; 
+            if PLkm < minkl 
+                mink = k;
+                minl = m;
+                minkl = PLkm; 
+            end 
+        else 
+            PL(k, m) = 0; 
+        end 
+    end 
+    
+    % Update pheromone matrix after each iteration
+    Delta_Tau = zeros(N, N);
+    for m = 1:M 
+        if PL(k, m)  
+            ROUT = ROUTES{k, m}; 
+            TS = length(ROUT) - 1; % Number of steps
+            PL_km = PL(k, m); 
+            for s = 1:TS 
+                x = ROUT(s); 
+                y = ROUT(s+1); 
+                Delta_Tau(x, y) = Delta_Tau(x, y) + Q / PL_km; 
+                Delta_Tau(y, x) = Delta_Tau(y, x) + Q / PL_km; 
+            end 
+        end 
+    end 
+    Tau = (1 - Rho) .* Tau + Delta_Tau;  % Evaporation and deposit
+end 
+
+% Plot results
+plotif = 1; % Flag to control plotting
+if plotif == 1 
+    % Plot convergence curve of minimum path lengths
+    minPL = zeros(K, 1); 
+    for i = 1:K 
+        PLK = PL(i, :); 
+        Nonzero = find(PLK); 
+        minPL(i) = min(PLK(Nonzero)); 
+    end 
+    figure(1) 
+    plot(minPL); 
+    grid on 
+    title('Convergence Curve'); 
+    xlabel('Iteration'); 
+    ylabel('Minimum Path Length'); 
+
+    % Plot robot trajectory on the grid map
+    figure(2) 
+    axis([0, MM, 0, MM]) 
+    for i = 1:MM 
+        for j = 1:MM 
+            if G(i, j) == 1 
+                % Obstacle cell
+                x1 = j-1; y1 = MM-i; 
+                x2 = j;   y2 = MM-i; 
+                x3 = j;   y3 = MM-i+1; 
+                x4 = j-1; y4 = MM-i+1; 
+                fill([x1, x2, x3, x4], [y1, y2, y3, y4], [0.2, 0.2, 0.2]); 
+            else 
+                % Free cell
+                x1 = j-1; y1 = MM-i; 
+                x2 = j;   y2 = MM-i; 
+                x3 = j;   y3 = MM-i+1; 
+                x4 = j-1; y4 = MM-i+1; 
+                fill([x1, x2, x3, x4], [y1, y2, y3, y4], [1, 1, 1]); 
+            end 
+            hold on 
+        end 
+    end 
+    title('Robot Trajectory'); 
+    xlabel('x-coordinate'); 
+    ylabel('y-coordinate');
+    
+    % Plot the best route found
+    ROUT = ROUTES{mink, minl}; 
+    LENROUT = length(ROUT); 
+    Rx = zeros(1, LENROUT);
+    Ry = zeros(1, LENROUT);
+    for ii = 1:LENROUT 
+        Rx(ii) = a*(mod(ROUT(ii), MM) - 0.5); 
+        if Rx(ii) == -0.5 
+            Rx(ii) = MM - 0.5; 
+        end 
+        Ry(ii) = a*(MM + 0.5 - ceil(ROUT(ii)/MM)); 
+    end 
+    plot(Rx, Ry, 'r', 'LineWidth', 2)
+end 
+
+plotif2 = 0; % Flag to optionally plot all ant routes
+if plotif2 == 1 
+    figure(3) 
+    axis([0, MM, 0, MM]) 
+    for i = 1:MM 
+        for j = 1:MM 
+            if G(i, j) == 1 
+                x1 = j-1; y1 = MM-i; 
+                x2 = j;   y2 = MM-i; 
+                x3 = j;   y3 = MM-i+1; 
+                x4 = j-1; y4 = MM-i+1; 
+                fill([x1, x2, x3, x4], [y1, y2, y3, y4], [0.2, 0.2, 0.2]); 
+            else 
+                x1 = j-1; y1 = MM-i; 
+                x2 = j;   y2 = MM-i; 
+                x3 = j;   y3 = MM-i+1; 
+                x4 = j-1; y4 = MM-i+1; 
+                fill([x1, x2, x3, x4], [y1, y2, y3, y4], [1, 1, 1]); 
+            end 
+            hold on 
+        end 
+    end 
+    for k = 1:K 
+        PLK = PL(k, :); 
+        minPLK = min(PLK); 
+        pos = find(PLK == minPLK); 
+        m = pos(1); 
+        ROUT = ROUTES{k, m}; 
+        LENROUT = length(ROUT); 
+        Rx = zeros(1, LENROUT);
+        Ry = zeros(1, LENROUT);
+        for ii = 1:LENROUT 
+            Rx(ii) = a*(mod(ROUT(ii), MM) - 0.5); 
+            if Rx(ii) == -0.5 
+                Rx(ii) = MM - 0.5; 
+            end 
+            Ry(ii) = a*(MM + 0.5 - ceil(ROUT(ii)/MM)); 
+        end 
+        plot(Rx, Ry) 
+        hold on 
+    end 
+end 
+
+end 
+
+function D = G2D(G)
+% Convert grid map G into a distance (adjacency) matrix D.
+l = size(G, 1); 
+D = zeros(l*l, l*l); 
+for i = 1:l 
+    for j = 1:l 
+        if G(i,j) == 0 
+            for m = 1:l 
+                for n = 1:l 
+                    if G(m,n) == 0 
+                        im = abs(i-m); 
+                        jn = abs(j-n); 
+                        if im+jn == 1 || (im==1 && jn==1) 
+                            D((i-1)*l+j, (m-1)*l+n) = sqrt(im+jn); 
+                        end 
+                    end 
+                end 
+            end 
+        end 
+    end 
+end
+end
