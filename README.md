@@ -23,3 +23,5 @@
 # Build the package using: catkin_make
 # Source your workspace: source devel/setup.bash
 # Launch your ROS application that uses the global planner.
+
+# This is the code file of the traditional ant colony algorithm. Since the paper is still in the review stage, I will complete the details of the corresponding innovations when the paper is accepted.
