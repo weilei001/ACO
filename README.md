@@ -4,9 +4,10 @@
 # Files
 # main.m: Main function that implements the ACO algorithm and plots the results.
 # G2D.m: Helper function that converts the grid map into an adjacency (distance) matrix.
+
 # Usage
 # Open MATLAB and navigate to the repository folder.
-# Run the main function:
-# main
+# Run the main function: main.
+
 # The algorithm will run, and figures showing the convergence curve and robot trajectory will be displayed.
 
